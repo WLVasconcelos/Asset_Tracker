@@ -1,0 +1,7 @@
+{
+    "totvsLanguageServer.welcomePage": false,
+    "totvsLanguageServer.editor.linter.includes": "F:\\include;C:\\Users\\Administrador\\TOTVS\\Include",
+
+    "totvsLanguageServer.folders":
+    "tlpp"
+}
