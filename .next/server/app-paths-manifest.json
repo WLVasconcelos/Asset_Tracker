@@ -1,5 +1,0 @@
-{
-  "/manifest.webmanifest/route": "app/manifest.webmanifest/route.js",
-  "/api/movements/route": "app/api/movements/route.js",
-  "/page": "app/page.js"
-}

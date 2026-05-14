@@ -22,6 +22,9 @@ export default function Dashboard() {
   const [movements, setMovements] = useState<Movement[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [filterType, setFilterType] = useState<'ALL' | 'OUT' | 'DELAYED' | 'PERIOD'>('ALL');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [formData, setFormData] = useState({
     docId: '',
     assetId: '',
@@ -97,25 +100,52 @@ export default function Dashboard() {
   };
 
   const activeMovements = movements.filter(m => m.status === 'OUT');
+  
+  const filteredMovements = movements.filter(m => {
+    if (filterType === 'ALL') return true;
+    if (filterType === 'OUT') return m.status === 'OUT';
+    if (filterType === 'DELAYED') {
+      return m.status === 'OUT' && m.requiresReturn && m.expectedReturn && new Date(m.expectedReturn) < new Date();
+    }
+    if (filterType === 'PERIOD') {
+      if (!startDate || !endDate) return m.status === 'OUT';
+      const exitDate = new Date(m.exitDate);
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999); // Include the whole end day
+      return m.status === 'OUT' && exitDate >= start && exitDate <= end;
+    }
+    return true;
+  });
 
   return (
     <main className="container">
       <div className="card">
         <h2>Dashboard de Ativos</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginTop: '1rem' }}>
-          <div style={{ padding: '1rem', background: '#eff6ff', borderRadius: '8px', border: '1px solid #bfdbfe' }}>
+          <div 
+            onClick={() => setFilterType('OUT')}
+            style={{ padding: '1rem', background: '#eff6ff', borderRadius: '8px', border: filterType === 'OUT' ? '2px solid #2563eb' : '1px solid #bfdbfe', cursor: 'pointer' }}
+          >
             <p style={{ color: '#1e40af', fontWeight: 'bold' }}>Ativos Fora</p>
             <h3 style={{ fontSize: '2rem' }}>{activeMovements.length}</h3>
           </div>
-          <div style={{ padding: '1rem', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #d1fae5' }}>
+          <div 
+            style={{ padding: '1rem', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #d1fae5' }}
+          >
             <p style={{ color: '#065f46', fontWeight: 'bold' }}>No Prazo</p>
             <h3 style={{ fontSize: '2rem' }}>{activeMovements.filter(m => !m.requiresReturn || (m.expectedReturn && new Date(m.expectedReturn) >= new Date())).length}</h3>
           </div>
-          <div style={{ padding: '1rem', background: '#fff1f2', borderRadius: '8px', border: '1px solid #fecdd3' }}>
+          <div 
+            onClick={() => setFilterType('DELAYED')}
+            style={{ padding: '1rem', background: '#fff1f2', borderRadius: '8px', border: filterType === 'DELAYED' ? '2px solid #e11d48' : '1px solid #fecdd3', cursor: 'pointer' }}
+          >
             <p style={{ color: '#9f1239', fontWeight: 'bold' }}>Atrasados</p>
             <h3 style={{ fontSize: '2rem' }}>{activeMovements.filter(m => m.requiresReturn && m.expectedReturn && new Date(m.expectedReturn) < new Date()).length}</h3>
           </div>
-          <div style={{ padding: '1rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+          <div 
+            style={{ padding: '1rem', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+          >
             <p style={{ color: '#475569', fontWeight: 'bold' }}>Total Retornados</p>
             <h3 style={{ fontSize: '2rem' }}>{movements.filter(m => m.status === 'RETURNED').length}</h3>
           </div>
@@ -123,11 +153,62 @@ export default function Dashboard() {
       </div>
 
       <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <h2>Movimentações de Ativos</h2>
           <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
             {showForm ? 'Fechar Formulário' : 'Registrar Saída'}
           </button>
+        </div>
+
+        {/* Filtros */}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.5rem', alignItems: 'center', background: '#f1f5f9', padding: '1rem', borderRadius: '8px' }}>
+          <span style={{ fontWeight: 'bold', marginRight: '0.5rem' }}>Filtrar:</span>
+          <button 
+            className={`btn ${filterType === 'ALL' ? 'btn-primary' : ''}`} 
+            style={{ background: filterType === 'ALL' ? undefined : '#fff', border: '1px solid #e2e8f0' }}
+            onClick={() => setFilterType('ALL')}
+          >
+            Todos
+          </button>
+          <button 
+            className={`btn ${filterType === 'OUT' ? 'btn-primary' : ''}`} 
+            style={{ background: filterType === 'OUT' ? undefined : '#fff', border: '1px solid #e2e8f0' }}
+            onClick={() => setFilterType('OUT')}
+          >
+            Fora
+          </button>
+          <button 
+            className={`btn ${filterType === 'DELAYED' ? 'btn-primary' : ''}`} 
+            style={{ background: filterType === 'DELAYED' ? undefined : '#fff', border: '1px solid #e2e8f0' }}
+            onClick={() => setFilterType('DELAYED')}
+          >
+            Atrasados
+          </button>
+          <button 
+            className={`btn ${filterType === 'PERIOD' ? 'btn-primary' : ''}`} 
+            style={{ background: filterType === 'PERIOD' ? undefined : '#fff', border: '1px solid #e2e8f0' }}
+            onClick={() => setFilterType('PERIOD')}
+          >
+            Por Período (Fora)
+          </button>
+
+          {filterType === 'PERIOD' && (
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginLeft: '1rem' }}>
+              <input 
+                type="date" 
+                value={startDate} 
+                onChange={e => setStartDate(e.target.value)}
+                style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+              />
+              <span>até</span>
+              <input 
+                type="date" 
+                value={endDate} 
+                onChange={e => setEndDate(e.target.value)}
+                style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+              />
+            </div>
+          )}
         </div>
 
         {showForm && (
@@ -247,7 +328,7 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {movements.map((mov) => (
+                {filteredMovements.map((mov) => (
                   <tr key={mov._id} style={{ opacity: mov.status === 'RETURNED' ? 0.7 : 1 }}>
                     <td>{mov.docId}</td>
                     <td>{mov.assetId} / {mov.item}</td>
@@ -289,9 +370,9 @@ export default function Dashboard() {
                     </td>
                   </tr>
                 ))}
-                {movements.length === 0 && (
+                {filteredMovements.length === 0 && (
                   <tr>
-                    <td colSpan={8} style={{ textAlign: 'center' }}>Nenhuma movimentação registrada.</td>
+                    <td colSpan={8} style={{ textAlign: 'center' }}>Nenhuma movimentação encontrada com estes filtros.</td>
                   </tr>
                 )}
               </tbody>
