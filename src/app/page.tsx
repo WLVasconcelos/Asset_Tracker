@@ -22,9 +22,10 @@ export default function Dashboard() {
   const [movements, setMovements] = useState<Movement[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [filterType, setFilterType] = useState<'ALL' | 'OUT' | 'DELAYED' | 'PERIOD'>('ALL');
+  const [filterType, setFilterType] = useState<'ALL' | 'OUT' | 'DELAYED' | 'NO_RETURN'>('ALL');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [exporting, setExporting] = useState(false);
   const [formData, setFormData] = useState({
     docId: '',
     assetId: '',
@@ -48,6 +49,36 @@ export default function Dashboard() {
       setLoading(false);
     }
   }
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({
+        filterType,
+        startDate,
+        endDate
+      });
+      const res = await fetch(`/api/movements/export?${params.toString()}`);
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `movimentacoes_${filterType.toLowerCase()}_${new Date().toISOString().split('T')[0]}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      } else {
+        alert('Erro ao exportar arquivo');
+      }
+    } catch (error) {
+      console.error('Erro ao exportar:', error);
+      alert('Erro de conexão ao exportar');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     fetchData();
@@ -102,20 +133,26 @@ export default function Dashboard() {
   const activeMovements = movements.filter(m => m.status === 'OUT');
   
   const filteredMovements = movements.filter(m => {
-    if (filterType === 'ALL') return true;
-    if (filterType === 'OUT') return m.status === 'OUT';
-    if (filterType === 'DELAYED') {
-      return m.status === 'OUT' && m.requiresReturn && m.expectedReturn && new Date(m.expectedReturn) < new Date();
+    // Categoria
+    let matchesCategory = true;
+    if (filterType === 'OUT') matchesCategory = m.status === 'OUT';
+    else if (filterType === 'DELAYED') {
+      matchesCategory = m.status === 'OUT' && m.requiresReturn && !!m.expectedReturn && new Date(m.expectedReturn) < new Date();
+    } else if (filterType === 'NO_RETURN') {
+      matchesCategory = m.requiresReturn === false;
     }
-    if (filterType === 'PERIOD') {
-      if (!startDate || !endDate) return m.status === 'OUT';
+
+    // Período
+    let matchesPeriod = true;
+    if (startDate && endDate) {
       const exitDate = new Date(m.exitDate);
       const start = new Date(startDate);
       const end = new Date(endDate);
-      end.setHours(23, 59, 59, 999); // Include the whole end day
-      return m.status === 'OUT' && exitDate >= start && exitDate <= end;
+      end.setHours(23, 59, 59, 999);
+      matchesPeriod = exitDate >= start && exitDate <= end;
     }
-    return true;
+
+    return matchesCategory && matchesPeriod;
   });
 
   return (
@@ -131,10 +168,11 @@ export default function Dashboard() {
             <h3 style={{ fontSize: '2rem' }}>{activeMovements.length}</h3>
           </div>
           <div 
-            style={{ padding: '1rem', background: '#ecfdf5', borderRadius: '8px', border: '1px solid #d1fae5' }}
+            onClick={() => setFilterType('NO_RETURN')}
+            style={{ padding: '1rem', background: '#ecfdf5', borderRadius: '8px', border: filterType === 'NO_RETURN' ? '2px solid #059669' : '1px solid #d1fae5', cursor: 'pointer' }}
           >
-            <p style={{ color: '#065f46', fontWeight: 'bold' }}>No Prazo</p>
-            <h3 style={{ fontSize: '2rem' }}>{activeMovements.filter(m => !m.requiresReturn || (m.expectedReturn && new Date(m.expectedReturn) >= new Date())).length}</h3>
+            <p style={{ color: '#065f46', fontWeight: 'bold' }}>Sem Retorno</p>
+            <h3 style={{ fontSize: '2rem' }}>{movements.filter(m => !m.requiresReturn).length}</h3>
           </div>
           <div 
             onClick={() => setFilterType('DELAYED')}
@@ -155,60 +193,74 @@ export default function Dashboard() {
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <h2>Movimentações de Ativos</h2>
-          <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
-            {showForm ? 'Fechar Formulário' : 'Registrar Saída'}
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button className="btn" style={{ background: '#059669', color: '#fff' }} onClick={handleExport} disabled={exporting}>
+              {exporting ? 'Exportando...' : 'Exportar Excel'}
+            </button>
+            <button className="btn btn-primary" onClick={() => setShowForm(!showForm)}>
+              {showForm ? 'Fechar Formulário' : 'Registrar Saída'}
+            </button>
+          </div>
         </div>
 
         {/* Filtros */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1.5rem', alignItems: 'center', background: '#f1f5f9', padding: '1rem', borderRadius: '8px' }}>
-          <span style={{ fontWeight: 'bold', marginRight: '0.5rem' }}>Filtrar:</span>
-          <button 
-            className={`btn ${filterType === 'ALL' ? 'btn-primary' : ''}`} 
-            style={{ background: filterType === 'ALL' ? undefined : '#fff', border: '1px solid #e2e8f0' }}
-            onClick={() => setFilterType('ALL')}
-          >
-            Todos
-          </button>
-          <button 
-            className={`btn ${filterType === 'OUT' ? 'btn-primary' : ''}`} 
-            style={{ background: filterType === 'OUT' ? undefined : '#fff', border: '1px solid #e2e8f0' }}
-            onClick={() => setFilterType('OUT')}
-          >
-            Fora
-          </button>
-          <button 
-            className={`btn ${filterType === 'DELAYED' ? 'btn-primary' : ''}`} 
-            style={{ background: filterType === 'DELAYED' ? undefined : '#fff', border: '1px solid #e2e8f0' }}
-            onClick={() => setFilterType('DELAYED')}
-          >
-            Atrasados
-          </button>
-          <button 
-            className={`btn ${filterType === 'PERIOD' ? 'btn-primary' : ''}`} 
-            style={{ background: filterType === 'PERIOD' ? undefined : '#fff', border: '1px solid #e2e8f0' }}
-            onClick={() => setFilterType('PERIOD')}
-          >
-            Por Período (Fora)
-          </button>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center', flex: 1 }}>
+            <span style={{ fontWeight: 'bold', marginRight: '0.5rem' }}>Filtrar:</span>
+            <button 
+              className={`btn ${filterType === 'ALL' ? 'btn-primary' : ''}`} 
+              style={{ background: filterType === 'ALL' ? undefined : '#fff', border: '1px solid #e2e8f0' }}
+              onClick={() => setFilterType('ALL')}
+            >
+              Todos
+            </button>
+            <button 
+              className={`btn ${filterType === 'OUT' ? 'btn-primary' : ''}`} 
+              style={{ background: filterType === 'OUT' ? undefined : '#fff', border: '1px solid #e2e8f0' }}
+              onClick={() => setFilterType('OUT')}
+            >
+              Fora
+            </button>
+            <button 
+              className={`btn ${filterType === 'DELAYED' ? 'btn-primary' : ''}`} 
+              style={{ background: filterType === 'DELAYED' ? undefined : '#fff', border: '1px solid #e2e8f0' }}
+              onClick={() => setFilterType('DELAYED')}
+            >
+              Atrasados
+            </button>
+            <button 
+              className={`btn ${filterType === 'NO_RETURN' ? 'btn-primary' : ''}`} 
+              style={{ background: filterType === 'NO_RETURN' ? undefined : '#fff', border: '1px solid #e2e8f0' }}
+              onClick={() => setFilterType('NO_RETURN')}
+            >
+              Sem Retorno
+            </button>
+          </div>
 
-          {filterType === 'PERIOD' && (
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginLeft: '1rem' }}>
-              <input 
-                type="date" 
-                value={startDate} 
-                onChange={e => setStartDate(e.target.value)}
-                style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-              />
-              <span>até</span>
-              <input 
-                type="date" 
-                value={endDate} 
-                onChange={e => setEndDate(e.target.value)}
-                style={{ padding: '0.4rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
-              />
-            </div>
-          )}
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', background: '#fff', padding: '0.5rem', borderRadius: '4px', border: '1px solid #e2e8f0' }}>
+            <span style={{ fontSize: '0.9rem', color: '#64748b' }}>Período:</span>
+            <input 
+              type="date" 
+              value={startDate} 
+              onChange={e => setStartDate(e.target.value)}
+              style={{ padding: '0.2rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.9rem' }}
+            />
+            <span>até</span>
+            <input 
+              type="date" 
+              value={endDate} 
+              onChange={e => setEndDate(e.target.value)}
+              style={{ padding: '0.2rem', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize: '0.9rem' }}
+            />
+            {(startDate || endDate) && (
+              <button 
+                onClick={() => { setStartDate(''); setEndDate(''); }}
+                style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '0.8rem' }}
+              >
+                Limpar
+              </button>
+            )}
+          </div>
         </div>
 
         {showForm && (
